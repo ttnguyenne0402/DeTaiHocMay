@@ -1,0 +1,21 @@
+{
+  "target_column": "at_risk",
+  "n_samples": 35000,
+  "n_features": 18,
+  "n_train": 28000,
+  "n_test": 7000,
+  "best_model": "XGBoost",
+  "threshold": 0.9153645634651184,
+  "metrics": {
+    "Accuracy": 1.0,
+    "Precision": 1.0,
+    "Recall": 1.0,
+    "F1": 1.0,
+    "ROC-AUC": 1.0,
+    "PR-AUC": 1.0
+  },
+  "class_distribution": {
+    "0": 22113,
+    "1": 12887
+  }
+}

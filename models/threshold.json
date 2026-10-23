@@ -1,0 +1,6 @@
+{
+  "threshold": 0.9993843067477982,
+  "target_recall": 0.8,
+  "model": "Random Forest",
+  "target_column": "at_risk"
+}
