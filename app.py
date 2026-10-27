@@ -1,6 +1,8 @@
 # ==============================================================================
-# STREAMLIT APP DỰ ĐOÁN NGUY CƠ ĐỘT QUỴ - PHIÊN BẢN GIAO DIỆN CHUYÊN NGHIỆP
-# Cài đặt thư viện: pip install streamlit pandas numpy plotly scikit-learn joblib
+# STREAMLIT APP DỰ ĐOÁN NHÓM NGUY CƠ ĐỘT QUỴ - GIAO DIỆN CHUYÊN NGHIỆP
+# Dataset: stroke_risk_dataset_v2.csv (17 đặc trưng: tuổi, giới tính, 15 triệu chứng)
+# Cài đặt: pip install streamlit pandas numpy plotly scikit-learn imbalanced-learn joblib
+# Chạy   : streamlit run app.py
 # ==============================================================================
 
 import json
@@ -25,15 +27,15 @@ st.set_page_config(
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    
+
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
-    
+
     .stApp {
         background-color: #F8FAFC;
     }
-    
+
     /* Header Banner */
     .hero-banner {
         background: linear-gradient(135deg, #0A2463 0%, #1E6091 100%);
@@ -54,7 +56,7 @@ st.markdown("""
         color: #E2E8F0 !important;
         margin-bottom: 0px !important;
     }
-    
+
     /* Section Cards */
     .css-1r6slb0, .css-1y4p8pa, div[data-testid="stForm"] {
         background-color: white;
@@ -63,7 +65,7 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.03);
         border: 1px solid #E2E8F0;
     }
-    
+
     /* Custom Metric Display */
     .metric-card {
         background-color: #FFFFFF;
@@ -84,7 +86,7 @@ st.markdown("""
         font-weight: 600;
         margin-top: 4px;
     }
-    
+
     /* Primary Button Styling */
     .stButton>button {
         background: linear-gradient(135deg, #1E6091 0%, #184E77 100%);
@@ -121,14 +123,40 @@ st.markdown("""
         border-radius: 8px;
         margin-top: 10px;
     }
-    
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------
-# 2. HÀM TÌM FILE VÀ LOAD DỮ LIỆU
+# 2. HẰNG SỐ THÔNG SỐ ĐẦU VÀO (KHỚP DATASET V2)
+# ------------------------------------------------------------------------------
+# Khoảng tuổi của dữ liệu huấn luyện
+TRAIN_AGE_RANGE = (18, 86)
+
+# (tên cột trong dataset, nhãn hiển thị tiếng Việt)
+SYMPTOMS = [
+    ("chest_pain", "Đau ngực"),
+    ("high_blood_pressure", "Huyết áp cao"),
+    ("irregular_heartbeat", "Nhịp tim không đều"),
+    ("shortness_of_breath", "Khó thở"),
+    ("fatigue_weakness", "Mệt mỏi, yếu người"),
+    ("dizziness", "Chóng mặt"),
+    ("swelling_edema", "Phù, sưng"),
+    ("neck_jaw_pain", "Đau cổ / hàm"),
+    ("excessive_sweating", "Đổ mồ hôi nhiều"),
+    ("persistent_cough", "Ho kéo dài"),
+    ("nausea_vomiting", "Buồn nôn / nôn"),
+    ("chest_discomfort", "Tức / khó chịu ở ngực"),
+    ("cold_hands_feet", "Tay chân lạnh"),
+    ("snoring_sleep_apnea", "Ngáy / ngưng thở khi ngủ"),
+    ("anxiety_doom", "Lo âu, cảm giác bất an"),
+]
+
+
+# ------------------------------------------------------------------------------
+# 3. HÀM TÌM FILE VÀ LOAD DỮ LIỆU
 # ------------------------------------------------------------------------------
 def _candidate_paths(filename):
     base = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
@@ -140,6 +168,10 @@ def _candidate_paths(filename):
         os.path.join(base, "models", filename),
         os.path.join(base, "notebooks", "models", filename),
         os.path.join(base, "..", "models", filename),
+        os.path.join("data", filename),
+        os.path.join("..", "data", filename),
+        os.path.join(base, "data", filename),
+        os.path.join(base, "..", "data", filename),
         os.path.join(base, filename),
         filename
     ]
@@ -185,7 +217,7 @@ def load_stroke_model():
     threshold = float(threshold_data.get("threshold", 0.5))
     target_recall = float(threshold_data.get("target_recall", 0.80))
     best_model_name = threshold_data.get("model", "Unknown Model")
-    target_column = threshold_data.get("target_column", "stroke")
+    target_column = threshold_data.get("target_column", "at_risk")
 
     summary_data = _load_json("summary.json") or {}
 
@@ -204,7 +236,7 @@ if model_meta is None:
         "threshold": 0.5,
         "target_recall": 0.80,
         "best_model_name": "Unknown",
-        "target_column": "stroke",
+        "target_column": "at_risk",
         "summary": {},
     }
 
@@ -224,7 +256,7 @@ df_sample = _load_first_available_csv([
 ])
 
 # ------------------------------------------------------------------------------
-# 3. TRÍCH XUẤT FEATURE IMPORTANCE TỪ MODEL
+# 4. TRÍCH XUẤT FEATURE IMPORTANCE TỪ MODEL
 # ------------------------------------------------------------------------------
 @st.cache_data
 def extract_feature_importance(model_path):
@@ -271,25 +303,9 @@ def extract_feature_importance(model_path):
 
             name_map = {
                 "age": "Tuổi",
-                "hypertension": "Tăng huyết áp",
-                "heart_disease": "Bệnh tim mạch",
-                "avg_glucose_level": "Mức Glucose trung bình",
-                "bmi": "Chỉ số BMI",
                 "gender_Male": "Giới tính (Nam)",
                 "gender_Female": "Giới tính (Nữ)",
-                "ever_married_Yes": "Đã kết hôn",
-                "ever_married_No": "Chưa kết hôn",
-                "smoking_status_smokes": "Hút thuốc",
-                "smoking_status_never smoked": "Không hút thuốc",
-                "smoking_status_formerly smoked": "Từng hút thuốc",
-                "smoking_status_Unknown": "Không rõ hút thuốc",
-                "work_type_Private": "Làm tư nhân",
-                "work_type_Self-employed": "Tự kinh doanh",
-                "work_type_Govt_job": "Nhà nước",
-                "work_type_children": "Trẻ em",
-                "work_type_Never_worked": "Chưa làm việc",
-                "Residence_type_Urban": "Thành thị",
-                "Residence_type_Rural": "Nông thôn",
+                **dict(SYMPTOMS),
             }
             df["Feature"] = df["Feature"].map(lambda x: name_map.get(x, x))
             return df.head(10)
@@ -300,7 +316,7 @@ def extract_feature_importance(model_path):
 feature_importance_data = extract_feature_importance(loaded_path)
 
 # ------------------------------------------------------------------------------
-# 4. SIDEBAR NAVIGATION
+# 5. SIDEBAR NAVIGATION
 # ------------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("""
@@ -341,7 +357,7 @@ with st.sidebar:
     st.caption("⚠️ *Lưu ý: Kết quả dự đoán mang tính chất tham khảo y học, không thay thế chẩn đoán chuyên môn từ bác sĩ.*")
 
 # ------------------------------------------------------------------------------
-# 5. NỘI DUNG CHÍNH THEO TRANG
+# 6. NỘI DUNG CHÍNH THEO TRANG
 # ------------------------------------------------------------------------------
 
 # ==============================================================================
@@ -357,10 +373,12 @@ if selected_menu == "🏠 Trang chủ":
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown("""
+        _rec = model_meta["summary"].get("metrics", {}).get("Recall")
+        _rec_txt = f"{_rec * 100:.1f}%" if _rec is not None else "N/A"
+        st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-val">90%+</div>
-                <div class="metric-lbl">Độ nhạy (Recall) Tối ưu</div>
+                <div class="metric-val">{_rec_txt}</div>
+                <div class="metric-lbl">Độ nhạy (Recall) trên tập Test</div>
             </div>
         """, unsafe_allow_html=True)
     with c2:
@@ -378,34 +396,34 @@ if selected_menu == "🏠 Trang chủ":
             </div>
         """, unsafe_allow_html=True)
     with c4:
-        st.markdown("""
+        st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-val">10+</div>
-                <div class="metric-lbl">Chỉ số Lâm sàng Đánh giá</div>
+                <div class="metric-val">{2 + len(SYMPTOMS)}</div>
+                <div class="metric-lbl">Đặc trưng đầu vào</div>
             </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
+
     col_left, col_right = st.columns([1.2, 1], gap="large")
     with col_left:
         with st.container(border=True):
             st.markdown("### 📌 Hướng dẫn sử dụng hệ thống")
             st.markdown("""
             1. **Bước 1**: Chọn mục **🔮 Dự đoán nguy cơ** tại danh mục điều hướng bên trái.
-            2. **Bước 2**: Nhập chính xác các thông tin chỉ số sinh hiệu và lâm sàng của bệnh nhân (Tuổi, Huyết áp, Bệnh tim, BMI, Glucose,...).
-            3. **Bước 3**: Nhấn nút **🔮 Dự đoán nguy cơ** để nhận phân tích xác suất nguy cơ.
-            4. **Bước 4**: Xem biểu đồ đồng hồ nguy cơ, khuyến nghị y khoa cá nhân hóa và các yếu tố ảnh hưởng chính.
+            2. **Bước 2**: Nhập tuổi, giới tính và bật các **triệu chứng** bệnh nhân đang có.
+            3. **Bước 3**: Nhấn nút **🔮 Bắt đầu Dự đoán Nguy cơ** để nhận phân tích.
+            4. **Bước 4**: Xem đồng hồ nguy cơ, khuyến nghị và các yếu tố ảnh hưởng chính của mô hình.
             """)
     with col_right:
         with st.container(border=True):
             st.markdown("### 🔍 Yếu tố nguy cơ hàng đầu")
             st.markdown("""
-            - 📈 **Tuổi tác**: Nguy cơ đột quỵ gia tăng đáng kể sau tuổi 55.
-            - 🩸 **Tăng huyết áp**: Nguyên nhân dẫn hàng đầu gây tổn thương mạch máu não.
-            - 🍬 **Đường huyết cao (Glucose)**: Ảnh hưởng tiêu cực đến hệ tuần hoàn.
-            - 🫀 **Bệnh tim mạch**: Gia tăng nguy cơ hình thành cục máu đông.
-            - ⚖️ **Chỉ số BMI**: Béo phì làm gia tăng áp lực lên hệ tim mạch.
+            - 📈 **Tuổi tác**: Yếu tố có ảnh hưởng lớn nhất trong mô hình.
+            - 🩸 **Huyết áp cao**: Gây tổn thương mạch máu não.
+            - 🫀 **Nhịp tim không đều**: Làm tăng nguy cơ hình thành cục máu đông.
+            - 💢 **Đau ngực, khó thở**: Dấu hiệu tim mạch cần được thăm khám.
+            - 😵 **Chóng mặt, mệt mỏi, yếu người**: Triệu chứng cảnh báo thần kinh - tuần hoàn.
             """)
 
 # ==============================================================================
@@ -423,6 +441,8 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
         st.session_state["prob_percent"] = 0.0
         st.session_state["is_high_risk"] = False
         st.session_state["has_predicted"] = False
+        st.session_state["last_symptoms"] = {}
+        st.session_state["last_age"] = None
 
     col_input, col_output = st.columns([1.1, 1.4], gap="large")
 
@@ -431,69 +451,25 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
         with st.container(border=True):
             st.markdown("### 📋 Thông tin Lâm sàng Bệnh nhân")
 
-            age = st.slider("Tuổi bệnh nhân", min_value=1.0, max_value=100.0, value=52.0, step=1.0)
-
-            c1, c2 = st.columns(2)
-            with c1:
-                gender = st.radio("Giới tính", ["Nam", "Nữ"], horizontal=True)
-            with c2:
-                marital_status = st.radio("Tình trạng hôn nhân", ["Độc thân", "Đã kết hôn"], horizontal=True)
-
-            c3, c4 = st.columns(2)
-            with c3:
-                hypertension = st.toggle("Tăng huyết áp", value=False)
-            with c4:
-                heart_disease = st.toggle("Bệnh tim mạch", value=False)
-
-            st.markdown("##### 📏 Chỉ số khối cơ thể (BMI)")
-            c5, c6 = st.columns(2)
-            with c5:
-                weight = st.number_input("Cân nặng (kg)", min_value=30.0, max_value=200.0, value=68.0, step=0.5)
-            with c6:
-                height_cm = st.number_input("Chiều cao (cm)", min_value=100.0, max_value=220.0, value=165.0, step=1.0)
-
-            bmi = weight / ((height_cm / 100) ** 2)
-
-            if bmi < 18.5:
-                bmi_status, bmi_color = "Gầy (Thiếu cân)", "#F59E0B"
-            elif bmi < 25.0:
-                bmi_status, bmi_color = "Bình thường (Chuẩn)", "#10B981"
-            elif bmi < 30.0:
-                bmi_status, bmi_color = "Thừa cân", "#F59E0B"
-            else:
-                bmi_status, bmi_color = "Béo phì", "#EF4444"
-
-            st.markdown(
-                f"""
-                <div style="background-color: {bmi_color}15; padding: 10px 14px;
-                            border-radius: 8px; border-left: 4px solid {bmi_color}; margin-bottom: 15px;">
-                    <span style="font-size: 14px; color: #1E293B; font-weight: 600;">
-                        Chỉ số BMI: <b>{bmi:.2f}</b> — <span style="color: {bmi_color};">{bmi_status}</span>
-                    </span>
-                </div>
-                """,
-                unsafe_allow_html=True,
+            age = st.slider(
+                "Tuổi bệnh nhân", min_value=18.0, max_value=100.0, value=52.0, step=1.0,
+                help=f"Dữ liệu huấn luyện gồm người từ {TRAIN_AGE_RANGE[0]} đến {TRAIN_AGE_RANGE[1]} tuổi",
             )
+            if age > TRAIN_AGE_RANGE[1]:
+                st.warning(
+                    f"⚠️ Tuổi nhập ({age:.0f}) vượt quá tuổi lớn nhất trong dữ liệu huấn luyện "
+                    f"({TRAIN_AGE_RANGE[1]}). Kết quả có thể kém tin cậy."
+                )
 
-            avg_glucose_level = st.number_input(
-                "Mức Glucose trung bình (mg/dL)",
-                min_value=50.0,
-                max_value=300.0,
-                value=106.0,
-                step=1.0,
-                help="Mức đường huyết bình thường thường nằm trong khoảng 70 - 140 mg/dL."
-            )
+            gender = st.radio("Giới tính", ["Nam", "Nữ"], horizontal=True)
 
-            smoking_status = st.selectbox(
-                "Tình trạng hút thuốc",
-                ["never smoked", "formerly smoked", "smokes", "Unknown"],
-                format_func=lambda x: {
-                    "never smoked": "Chưa bao giờ hút thuốc",
-                    "formerly smoked": "Đã từng hút (Đã bỏ)",
-                    "smokes": "Hiện đang hút thuốc",
-                    "Unknown": "Không xác định"
-                }.get(x, x)
-            )
+            st.markdown("##### 🩺 Triệu chứng hiện có")
+            symptom_values = {}
+            sym_cols = st.columns(2)
+            for i, (col_name, label) in enumerate(SYMPTOMS):
+                with sym_cols[i % 2]:
+                    symptom_values[col_name] = int(st.toggle(label, value=False, key=f"sym_{col_name}"))
+            st.caption(f"Đã chọn {sum(symptom_values.values())}/{len(SYMPTOMS)} triệu chứng")
 
             st.markdown("<br>", unsafe_allow_html=True)
             predict_btn = st.button("🔮 Bắt đầu Dự đoán Nguy cơ", use_container_width=True)
@@ -504,29 +480,9 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
             if model is None:
                 st.error("❌ Không thể chạy dự đoán do chưa tải được file mô hình .pkl.")
             else:
-                gender_en = "Male" if gender == "Nam" else "Female"
-                ever_married_en = "Yes" if marital_status == "Đã kết hôn" else "No"
-
-                if age >= 18:
-                    work_type = "Private"
-                elif age < 16:
-                    work_type = "children"
-                else:
-                    work_type = "Never_worked"
-                residence_type = "Urban"
-
-                input_data = pd.DataFrame([{
-                    "gender": gender_en,
-                    "age": age,
-                    "hypertension": 1 if hypertension else 0,
-                    "heart_disease": 1 if heart_disease else 0,
-                    "ever_married": ever_married_en,
-                    "work_type": work_type,
-                    "Residence_type": residence_type,
-                    "avg_glucose_level": avg_glucose_level,
-                    "bmi": bmi,
-                    "smoking_status": smoking_status,
-                }])
+                row = {"age": age, "gender": "Male" if gender == "Nam" else "Female"}
+                row.update(symptom_values)
+                input_data = pd.DataFrame([row])
 
                 try:
                     probability = float(model.predict_proba(input_data)[0][1])
@@ -536,6 +492,9 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
                     st.session_state["prob_percent"] = prob_percent
                     st.session_state["is_high_risk"] = is_high_risk
                     st.session_state["has_predicted"] = True
+                    # Lưu lại dữ liệu đã dự đoán để khuyến nghị khớp với kết quả đang hiển thị
+                    st.session_state["last_symptoms"] = dict(symptom_values)
+                    st.session_state["last_age"] = age
                 except Exception as e:
                     st.error(f"❌ Lỗi dự đoán từ mô hình: {e}")
 
@@ -582,6 +541,7 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
                     height=200, margin=dict(l=10, r=10, t=10, b=10)
                 )
                 st.plotly_chart(fig_gauge, use_container_width=True)
+                st.caption("Xác suất mô hình xếp bệnh nhân vào nhóm nguy cơ cao theo nhãn của dữ liệu, không phải xác suất đột quỵ thực tế.")
 
         with c_warning:
             with st.container(border=True):
@@ -593,7 +553,7 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
                             f"""
                             <div class="alert-high-risk">
                                 <strong style="font-size: 16px;">⚠️ CẢNH BÁO: NGUY CƠ CAO ({prob_percent:.2f}%)</strong><br>
-                                <span style="font-size: 13px;">Mức xác suất vượt quá ngưỡng an toàn ({threshold*100:.1f}%). Bệnh nhân nên tham vấn bác sĩ chuyên khoa tim mạch / thần kinh để làm thêm kiểm tra chuyên sâu.</span>
+                                <span style="font-size: 13px;">Mức xác suất vượt quá ngưỡng cảnh báo ({threshold*100:.1f}%). Bệnh nhân nên tham vấn bác sĩ chuyên khoa tim mạch / thần kinh để làm thêm kiểm tra chuyên sâu.</span>
                             </div>
                             """,
                             unsafe_allow_html=True,
@@ -603,7 +563,7 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
                             f"""
                             <div class="alert-low-risk">
                                 <strong style="font-size: 16px;">✅ NGUY CƠ THẤP ({prob_percent:.2f}%)</strong><br>
-                                <span style="font-size: 13px;">Xác suất nằm trong vùng an toàn. Khuyến nghị duy trì chế độ ăn uống lành mạnh, tập thể dục thường xuyên và kiểm tra sức khỏe định kỳ.</span>
+                                <span style="font-size: 13px;">Xác suất nằm dưới ngưỡng cảnh báo. Khuyến nghị duy trì chế độ ăn uống lành mạnh, tập thể dục thường xuyên và kiểm tra sức khỏe định kỳ.</span>
                             </div>
                             """,
                             unsafe_allow_html=True,
@@ -615,19 +575,23 @@ elif selected_menu == "🔮 Dự đoán nguy cơ":
         if has_predicted:
             with st.container(border=True):
                 st.markdown("#### 💡 Khuyên dùng cho Bệnh nhân")
+                sv = st.session_state["last_symptoms"]
+                last_age = st.session_state["last_age"] or 0
                 recs = []
-                if hypertension:
-                    recs.append("• **Kiểm soát huyết áp**: Cần theo dõi huyết áp hàng ngày, giảm lượng muối dưới 5g/ngày.")
-                if heart_disease:
-                    recs.append("• **Theo dõi tim mạch**: Định kỳ đo điện tâm đồ (ECG) và tái khám đúng hẹn.")
-                if avg_glucose_level > 140:
-                    recs.append("• **Kiểm soát đường huyết**: Mức glucose cao (>140 mg/dL), cần tham vấn xét nghiệm HbA1c.")
-                if bmi >= 25:
-                    recs.append("• **Tối ưu cân nặng**: Tập luyện thể thao ít nhất 150 phút/tuần để cải thiện BMI.")
-                if smoking_status in ["smokes", "formerly smoked"]:
-                    recs.append("• **Cai thuốc lá**: Hạn chế triệt để chất kích thích để bảo vệ thành mạch máu.")
+                if sv.get("high_blood_pressure"):
+                    recs.append("• **Kiểm soát huyết áp**: Theo dõi huyết áp hàng ngày, giảm muối dưới 5g/ngày.")
+                if sv.get("irregular_heartbeat"):
+                    recs.append("• **Nhịp tim không đều**: Nên đo điện tâm đồ (ECG) và khám tim mạch sớm.")
+                if any(sv.get(k) for k in ["chest_pain", "chest_discomfort", "shortness_of_breath"]):
+                    recs.append("• **Triệu chứng ngực / hô hấp**: Cần được bác sĩ đánh giá, không nên tự theo dõi tại nhà.")
+                if any(sv.get(k) for k in ["dizziness", "fatigue_weakness"]):
+                    recs.append("• **Chóng mặt, mệt yếu**: Ghi lại thời điểm xuất hiện và báo bác sĩ thần kinh.")
+                if sv.get("snoring_sleep_apnea"):
+                    recs.append("• **Ngưng thở khi ngủ**: Nên đo đa ký giấc ngủ, vì đây là yếu tố nguy cơ tim mạch.")
+                if last_age >= 55:
+                    recs.append("• **Tuổi ≥ 55**: Nên khám sức khỏe tim mạch định kỳ mỗi 6–12 tháng.")
                 if not recs:
-                    recs.append("• Duy trì thói quen sinh hoạt khoa học, uống đủ 2 lít nước mỗi ngày và ngủ đủ 7-8 tiếng.")
+                    recs.append("• Duy trì thói quen sinh hoạt khoa học, uống đủ nước và ngủ đủ 7-8 tiếng.")
 
                 for r in recs:
                     st.markdown(r)
@@ -694,7 +658,7 @@ elif selected_menu == "📈 Phân tích dữ liệu":
     st.markdown("""
         <div class="hero-banner">
             <div class="hero-title">📈 Phân Tích Dữ Liệu Trực Quan (EDA)</div>
-            <div class="hero-subtitle">Phân tích mối quan hệ giữa các chỉ số sinh hiệu và nguy cơ đột quỵ.</div>
+            <div class="hero-subtitle">Phân tích mối quan hệ giữa các triệu chứng và nhóm nguy cơ đột quỵ.</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -704,7 +668,7 @@ elif selected_menu == "📈 Phân tích dữ liệu":
         c_eda1, c_eda2 = st.columns(2, gap="large")
         with c_eda1:
             with st.container(border=True):
-                st.markdown("### ⚖️ Phân Bố Nhãn Mục Tiêu (Class Imbalance)")
+                st.markdown("### ⚖️ Phân Bố Nhãn Mục Tiêu")
                 target_counts = df_sample[col_target].value_counts().reset_index()
                 target_counts.columns = ["Class", "Count"]
                 target_counts["Class_Label"] = target_counts["Class"].map({0: "Không nguy cơ (0)", 1: "Có nguy cơ (1)"})
@@ -750,6 +714,11 @@ elif selected_menu == "📈 Phân tích dữ liệu":
                 )
                 fig_corr.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10))
                 st.plotly_chart(fig_corr, use_container_width=True)
+                if "stroke_risk_percentage" in num_df.columns:
+                    st.caption(
+                        "ℹ️ Cột `stroke_risk_percentage` tương quan gần như tuyệt đối với nhãn vì nhãn được cắt từ chính cột này, "
+                        "nên đã được LOẠI khỏi đầu vào mô hình để tránh rò rỉ dữ liệu."
+                    )
     else:
         st.warning("⚠️ Cần có file dataset để hiển thị biểu đồ EDA.")
 
